@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Secrets
+.env
+*.env
+secrets.*
+
+# Generated anonymized files and summaries
+*_anonymized.*
+anonymization_summary.txt
+
+# Logs/data, except examples/tests intentionally committed
+*.log
+*.txt
+*.csv
+*.json
+!examples/**
+!tests/**
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
