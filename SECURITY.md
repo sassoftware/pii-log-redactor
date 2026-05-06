@@ -1,10 +1,4 @@
-<!-- 
-A SECURITY.md outlines your project's security policy. It includes instructions on how to report a security vulnerability in your project.
-If your project contains this file, link to it from the project's README. 
--->
-
 # PII Log Redactor Security Policy
-<!-- Replace PROJECT_NAME with the official name of your open source project. -->
 Project maintainers and community contributors take security issues seriously.
 Efforts to disclose potential issues responsibly are appreciated, and viable contributions will be acknowledged. 
 To aid investigation of any reported vulnerabilities, please follow the [reporting guidelines](#reporting-guidelines) when submitting your findings.
