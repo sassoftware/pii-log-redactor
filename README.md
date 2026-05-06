@@ -1,10 +1,9 @@
-# PII SAS Log Redactor
+# PII Log Redactor
 
-A lightweight regex-based log redactor with deterministic tokenization for masking sensitive data in SAS logs.
 
-## High-level summary
+## Overview
 
-The PII Log Redactor scans log files, detects sensitive values using regex patterns, and replaces them with consistent redacted tokens. It preserves the overall log structure so logs remain useful for troubleshooting while reducing exposure of private or sensitive information.
+A lightweight, regex-driven log redaction tool that uses deterministic tokenization to mask sensitive data in SAS logs. The PII Log Redactor scans log files, identifies sensitive values using configurable regex patterns, and replaces them with consistent, repeatable tokens. This approach preserves the original log structure, maintaining usability for troubleshooting while minimizing exposure of private or sensitive information.
 
 ## What is masked?
 
@@ -58,15 +57,15 @@ redacted_logs/
 └── redacted_summary.txt
 ```
 
-## Usage
+## Examples
 
-### Single file
+### For single file
 
 ```bash
 python log_redactor.py --in input.log --out ./redacted --salt "your-private-salt"
 ```
 
-### Directory
+### For directory
 
 ```bash
 python log_redactor.py --in ./logs --out ./redacted_logs --recursive --salt "your-private-salt"
@@ -133,12 +132,10 @@ Already-redacted files ending in `_redacted` are skipped.
 For basic usage, the script uses the Python standard library only.
 
 
+## Contributing
 
-## Safety notes
+Maintainers are not currently accepting patches and contributions to this project.
 
-- Test with copied logs first.
-- Keep your salt private.
-- Use the same salt when you need consistent tokens across multiple runs.
-- Use `--delete-original` only when you are sure you no longer need the original files.
-- Regex anonymization is not a guarantee of complete privacy protection.
+## License
 
+This project is licensed under the [Apache 2.0 License](LICENSE).
