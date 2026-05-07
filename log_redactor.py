@@ -16,20 +16,22 @@
 # under the License.
 
 """
-        PII Log Redactor for SAS Logs
-        -----------------------------
-        Regex-only deterministic SAS log redactor.
+PII Log Redactor for SAS Logs
 
-        Default behavior:
-        - Reads one file or a folder of log files.
-        - Writes redacted files to a separate output folder.
-        - Preserves input folder structure when processing directories.
-        - Writes redacted files as <original_file_name>_redacted.<extension>.
-        - Writes one summary file for the whole run.
-        - Does NOT delete original files unless --delete-original is provided.
-        - Preserves CASLIB names to help CAS-related troubleshooting.
-        
+A deterministic, regex-based tool for redacting sensitive data in SAS logs
+while preserving structure for troubleshooting.
+
+Key behavior:
+  • Supports single file and directory processing
+  • Writes redacted output to a separate location
+  • Maintains original directory structure
+  • Uses <filename>_redacted.<extension> naming
+  • Generates a single summary per run
+  • Retains original files unless explicitly removed
+  • Preserves CASLIB names for CAS diagnostics
+
 """
+
 from __future__ import annotations
 
 import os
@@ -42,7 +44,7 @@ from pathlib import Path
 from typing import Callable, Iterable, List
 
 
-
+# Token generation
 class Tokenizer:
     def __init__(self, salt: bytes) -> None:
         self._salt = salt
@@ -55,7 +57,7 @@ class Tokenizer:
         h = hmac.new(self._salt, value.encode("utf-8"), hashlib.sha256).digest()
         return self._b32(h)[:n]
 
-
+# Replacement counts
 class Stats:
     def __init__(self) -> None:
         self.counts: dict[str, int] = {}
@@ -78,7 +80,7 @@ class Stats:
 
         return lines
 
-
+# Count-aware regex substitution
 def counted_sub(
     stats: Stats,
     pattern: re.Pattern,
@@ -94,7 +96,7 @@ def counted_sub(
 
     return f
 
-
+# Salt loading
 def load_salt(cli_salt: str | None = None) -> bytes:
     if cli_salt:
         return cli_salt.encode("utf-8")
@@ -110,35 +112,56 @@ def load_salt(cli_salt: str | None = None) -> bytes:
         "No salt provided. Use --salt, set SALT, or configure KEYVAULT_URL/HASH_SALT_NAME."
     )
 
-
+# Redaction patterns
 sessionID1_re = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
     re.IGNORECASE,
-)
-sessionID2_1_re = re.compile(r"[0-9a-f]{16}", re.IGNORECASE)
-
+    )
+sessionID2_1_re = re.compile(
+    r"[0-9a-f]{16}", 
+    re.IGNORECASE
+    )
 IPAddress_re = re.compile(
     r"(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\."
     r"(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\."
     r"(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\."
     r"(?:25[0-5]|2[0-4]\d|[01]?\d\d?)"
-)
-url_with_host_re = re.compile(r"\b(https?)://([^/\s:]+)(:\d+)?([^\s]*)")
+    )
+url_with_host_re = re.compile(
+    r"\b(https?)://([^/\s:]+)(:\d+)?([^\s]*)"
+    )
+email_re = re.compile( 
+    r"[\w.\-_]+@[\w.\-_]+"
+    )
+cnentries_re = re.compile(
+    r"DN \[[^\]]*\]"
+    )
+type_re = re.compile(
+    r"type=[^,\.]+"
+    )
+id_re = re.compile(
+    r"id=[^,\.]+"
+    )
+user_re = re.compile(
+    r"user=([^,\.]+)"
+    r"|user\s+'([^']+)'@'([^']+)'"
+    r'|("sessionUser"\s*:\s*")([^"]+)(")',
+    re.IGNORECASE
+    )
+pid_re = re.compile(
+    r"PID\s+\d+"
+    )
+cas_3_re = re.compile(
+    r"(Full job is: {{).*?(\})"
+    )
+castable_re = re.compile(
+    r"(/tables/)([^/]+)"
+    )
+port2port_re = re.compile(
+    r":\d{1,5}->:\d{1,5}"
+    )
 
-email_re = re.compile(r"[\w.\-_]+@[\w.\-_]+")
-cnentries_re = re.compile(r"DN \[[^\]]*\]")
-
-type_re = re.compile(r"type=[^,\.]+")
-id_re = re.compile(r"id=[^,\.]+")
-user_re = re.compile(r"user=[^,\.]+")
-pid_re = re.compile(r"PID\s+\d+")
-
-cas_3_re = re.compile(r"(Full job is: {{).*?(\})")
-castable_re = re.compile(r"(/tables/)([^/]+)")
-
-port2port_re = re.compile(r":\d{1,5}->:\d{1,5}")
-
-
+# Redaction pipeline
 def make_redactors(tokenizer: Tokenizer, stats: Stats) -> List[Callable[[str], str]]:
     redactCNEntries = counted_sub(stats, cnentries_re, "CN_ENTRIES", "<<DN>>")
     redactCASTable = counted_sub(stats, castable_re, "CASTABLE", r"/tables/<<TABLE>>")
@@ -186,9 +209,27 @@ def make_redactors(tokenizer: Tokenizer, stats: Stats) -> List[Callable[[str], s
             return f"id=<<ID_{tokenizer.token(rhs, 8)}>>"
 
         def repl_user(m: re.Match) -> str:
-            stats.inc("USERNAMES")
-            rhs = m.group(0).split("=", 1)[1]
-            return f"user=<<USER_{tokenizer.token(rhs, 8)}>>"
+            stats.inc("USERNAMES", 1)
+
+            # Handles: user=someuser
+            if m.group(1) is not None:
+                rhs = m.group(1)
+                tok = tokenizer.token(rhs, 8)
+                return f"user=<<USER_{tok}>>"
+
+            # Handles: user 'someuser'@'%'
+            if m.group(2) is not None:
+                username = m.group(2)
+                host = m.group(3)
+                tok = tokenizer.token(username, 8)
+                return f"user '<<USER_{tok}>>'@'{host}'"
+
+            # Handles: "sessionUser":"someuser"
+            prefix = m.group(4)
+            username = m.group(5)
+            suffix = m.group(6)
+            tok = tokenizer.token(username, 8)
+            return f'{prefix}<<USER_{tok}>>{suffix}'
 
         s = id_re.sub(repl_id, s)
         return user_re.sub(repl_user, s)
@@ -216,7 +257,7 @@ def make_redactors(tokenizer: Tokenizer, stats: Stats) -> List[Callable[[str], s
         redactCASTable,
     ]
 
-
+# Text processing helpers
 def apply_pipeline(text: str, funcs: Iterable[Callable[[str], str]]) -> str:
     for f in funcs:
         text = f(text)
@@ -226,7 +267,7 @@ def apply_pipeline(text: str, funcs: Iterable[Callable[[str], str]]) -> str:
 def process_text(text: str, pipeline: List[Callable[[str], str]]) -> str:
     return "\n".join(apply_pipeline(line, pipeline) for line in text.splitlines())
 
-
+# File/path helpers
 def should_skip_file(path: Path) -> bool:
     return path.stem.endswith("_redacted")
 
@@ -255,7 +296,7 @@ def iter_paths(root: Path, recursive: bool) -> Iterable[Path]:
         if not should_skip_file(root):
             yield root
 
-
+# File processing
 def process_file(
     inp: Path,
     outp: Path,
@@ -276,13 +317,13 @@ def process_file(
     if delete_original:
         inp.unlink()
 
-
+# Write summary to file
 def write_summary(output_root: Path, stats: Stats) -> None:
     output_root.mkdir(parents=True, exist_ok=True)
     summary_path = output_root / "redaction_summary.txt"
     summary_path.write_text("\n".join(stats.as_lines()), encoding="utf-8")
 
-
+# Command-line entry point
 def main() -> None:
     parser = argparse.ArgumentParser(description="Regex-only deterministic PII log redactor")
     parser.add_argument("--in", dest="inp", required=True, help="Input file or directory")
