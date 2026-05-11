@@ -129,7 +129,7 @@ Already-redacted files ending in `_redacted` are skipped.
 
 ## Dependencies
 
-For basic usage, the script uses the Python standard library only.
+For basic usage, the script uses the Python standard library only. See [Python licensing details](https://docs.python.org/3/license.html#python-software-foundation-license-version-2) for more information on accessing and using Python.
 
 
 ## Contributing
