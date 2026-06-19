@@ -116,8 +116,18 @@ IPAddress_re = re.compile(
 url_with_host_re = re.compile(
     r"\b(https?)://([^/\s:]+)(:\d+)?([^\s]*)"
     )
-email_re = re.compile( 
-    r"[\w.\-_]+@[\w.\-_]+"
+jdbc_postgresql_with_host_re = re.compile(
+    r"\b(jdbc:postgresql://)"
+    r"([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)"
+    r"(:\d{1,5})?"
+    r"([^\s]*)",
+    re.IGNORECASE,
+    )
+email_re = re.compile(
+    r"\b[A-Za-z0-9._%+-]+@"
+    r"(?:[A-Za-z0-9-]+\.)+"
+    r"[A-Za-z]{2,63}\b",
+    re.IGNORECASE,
     )
 cnentries_re = re.compile(
     r"DN \[[^\]]*\]"
@@ -171,6 +181,17 @@ def make_redactors(tokenizer: Tokenizer, stats: Stats) -> List[Callable[[str], s
         )
         return port2port_re.sub("", s)
 
+    def redactJdbcPostgreSQLHostname(s: str) -> str:
+        def repl(m: re.Match) -> str:
+            prefix = m.group(1)
+            host = m.group(2)
+            port = m.group(3) or ""
+            rest = m.group(4) or ""
+
+            stats.inc("HOSTNAMES")
+            return f"{prefix}<<HOST_{tokenizer.token(host, 8)}>>{port}{rest}"
+
+        return jdbc_postgresql_with_host_re.sub(repl, s)
     def redactHostname(s: str) -> str:
         def repl(m: re.Match) -> str:
             scheme, host, port, rest = m.group(1), m.group(2), m.group(3) or "", m.group(4) or ""
@@ -234,6 +255,7 @@ def make_redactors(tokenizer: Tokenizer, stats: Stats) -> List[Callable[[str], s
         redactsessionID,
         redactsessionID2,
         redactIPAddress,
+        redactJdbcPostgreSQLHostname,
         redactHostname,
         redactEmailAddresses,
         redactCNEntries,
